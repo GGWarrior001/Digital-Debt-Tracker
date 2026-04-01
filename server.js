@@ -1,3 +1,5 @@
+require('dotenv').config();
+
 const express = require('express');
 const cors = require('cors');
 const bcrypt = require('bcryptjs');
@@ -6,13 +8,15 @@ const sqlite3 = require('sqlite3').verbose();
 const path = require('path');
 
 const app = express();
-const db = new sqlite3.Database(':memory:');
+const db = new sqlite3.Database(process.env.DATABASE_URL || './data.db');
 
 // Middleware
-app.use(cors());
+app.use(cors({
+  origin: process.env.CORS_ORIGIN || 'http://localhost:3000'
+}));
 app.use(express.json());
 
-const JWT_SECRET = 'process.env.JWT_SECRET || 'fallback-for-dev-only';
+const JWT_SECRET = process.env.JWT_SECRET || 'fallback-for-dev-only';
 
 // Initialize database
 db.serialize(() => {
@@ -53,8 +57,21 @@ db.serialize(() => {
 // Auth Routes
 app.post('/api/auth/signup', (req, res) => {
   const { email, password } = req.body;
-  
-  const hashedPassword = bcrypt.hashSync(password, 10);
+
+  if (!email || !password) {
+    return res.status(400).json({ error: 'Email and password are required' });
+  }
+
+  const emailRegex = /^[^\s@]+@[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?)*\.[a-zA-Z]{2,}$/;
+  if (!emailRegex.test(email)) {
+    return res.status(400).json({ error: 'Invalid email address' });
+  }
+
+  if (password.length < 8) {
+    return res.status(400).json({ error: 'Password must be at least 8 characters' });
+  }
+
+  const hashedPassword = bcrypt.hashSync(password, 12);
   
   db.run(
     'INSERT INTO users (email, password) VALUES (?, ?)',
@@ -72,7 +89,11 @@ app.post('/api/auth/signup', (req, res) => {
 
 app.post('/api/auth/login', (req, res) => {
   const { email, password } = req.body;
-  
+
+  if (!email || !password) {
+    return res.status(400).json({ error: 'Email and password are required' });
+  }
+
   db.get('SELECT * FROM users WHERE email = ?', [email], (err, user) => {
     if (err || !user) {
       return res.status(401).json({ error: 'Invalid credentials' });
@@ -118,7 +139,23 @@ app.get('/api/subscriptions', verifyToken, (req, res) => {
 
 app.post('/api/subscriptions', verifyToken, (req, res) => {
   const { name, cost, category, billing_date, website, trial_end_date, notes } = req.body;
-  
+
+  if (!name || cost === undefined || cost === null) {
+    return res.status(400).json({ error: 'Name and cost are required' });
+  }
+
+  const parsedCost = parseFloat(cost);
+  if (isNaN(parsedCost) || parsedCost < 0) {
+    return res.status(400).json({ error: 'Cost must be a non-negative number' });
+  }
+
+  if (billing_date !== undefined && billing_date !== null) {
+    const day = parseInt(billing_date, 10);
+    if (isNaN(day) || day < 1 || day > 31) {
+      return res.status(400).json({ error: 'Billing day must be between 1 and 31' });
+    }
+  }
+
   db.run(
     `INSERT INTO subscriptions (user_id, name, cost, category, billing_date, website, trial_end_date, notes)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
@@ -132,7 +169,23 @@ app.post('/api/subscriptions', verifyToken, (req, res) => {
 
 app.put('/api/subscriptions/:id', verifyToken, (req, res) => {
   const { name, cost, category, billing_date, website, status, trial_end_date, notes } = req.body;
-  
+
+  if (!name || cost === undefined || cost === null) {
+    return res.status(400).json({ error: 'Name and cost are required' });
+  }
+
+  const parsedCost = parseFloat(cost);
+  if (isNaN(parsedCost) || parsedCost < 0) {
+    return res.status(400).json({ error: 'Cost must be a non-negative number' });
+  }
+
+  if (billing_date !== undefined && billing_date !== null) {
+    const day = parseInt(billing_date, 10);
+    if (isNaN(day) || day < 1 || day > 31) {
+      return res.status(400).json({ error: 'Billing day must be between 1 and 31' });
+    }
+  }
+
   db.run(
     `UPDATE subscriptions SET name = ?, cost = ?, category = ?, billing_date = ?, website = ?, status = ?, trial_end_date = ?, notes = ?
      WHERE id = ? AND user_id = ?`,
