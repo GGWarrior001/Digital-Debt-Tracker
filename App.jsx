@@ -1,7 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import './App.css';
 
-const API_URL = 'http://localhost:5000/api';
+const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000/api';
+
+const getOrdinal = (n) => {
+  const s = ['th', 'st', 'nd', 'rd'];
+  const v = n % 100;
+  return n + (s[(v - 20) % 10] || s[v] || s[0]);
+};
 
 function App() {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
@@ -20,6 +26,8 @@ function App() {
     trial_end_date: '',
     notes: ''
   });
+
+  const [formError, setFormError] = useState('');
 
   const categories = ['Entertainment', 'Software', 'Fitness', 'News', 'Productivity', 'Other'];
 
@@ -58,27 +66,38 @@ function App() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    
-    if (editingId) {
-      // Update
-      await fetch(`${API_URL}/subscriptions/${editingId}`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify(formData)
-      });
-    } else {
-      // Create
-      await fetch(`${API_URL}/subscriptions`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify(formData)
-      });
+    setFormError('');
+
+    try {
+      let res;
+      if (editingId) {
+        res = await fetch(`${API_URL}/subscriptions/${editingId}`, {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+          },
+          body: JSON.stringify(formData)
+        });
+      } else {
+        res = await fetch(`${API_URL}/subscriptions`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+          },
+          body: JSON.stringify(formData)
+        });
+      }
+
+      if (!res.ok) {
+        const data = await res.json();
+        setFormError(data.error || 'An error occurred. Please try again.');
+        return;
+      }
+    } catch (err) {
+      setFormError('Connection error. Please try again.');
+      return;
     }
 
     setShowModal(false);
@@ -98,10 +117,20 @@ function App() {
 
   const handleDelete = async (id) => {
     if (window.confirm('Delete this subscription?')) {
-      await fetch(`${API_URL}/subscriptions/${id}`, {
-        method: 'DELETE',
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
+      try {
+        const res = await fetch(`${API_URL}/subscriptions/${id}`, {
+          method: 'DELETE',
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (!res.ok) {
+          const data = await res.json();
+          console.error('Error deleting subscription:', data.error);
+          return;
+        }
+      } catch (err) {
+        console.error('Connection error:', err);
+        return;
+      }
       fetchSubscriptions();
       fetchAnalytics();
     }
@@ -119,6 +148,11 @@ function App() {
     setIsLoggedIn(false);
     setSubscriptions([]);
     setAnalytics(null);
+  };
+
+  const closeModal = () => {
+    setShowModal(false);
+    setFormError('');
   };
 
   if (!isLoggedIn) {
@@ -154,7 +188,7 @@ function App() {
           <div className="dashboard">
             <div className="dashboard-header">
               <h2>Your Subscriptions</h2>
-              <button className="btn-primary" onClick={() => { setEditingId(null); setShowModal(true); }}>
+              <button className="btn-primary" onClick={() => { setEditingId(null); setFormData({ name: '', cost: '', category: 'Entertainment', billing_date: 1, website: '', trial_end_date: '', notes: '' }); setFormError(''); setShowModal(true); }}>
                 + Add Subscription
               </button>
             </div>
@@ -173,7 +207,7 @@ function App() {
                     </div>
                     <p className="category">{sub.category}</p>
                     <p className="cost">${sub.cost.toFixed(2)}<span>/month</span></p>
-                    <p className="date">Billing: {sub.billing_date}th</p>
+                    <p className="date">Billing: {getOrdinal(sub.billing_date)}</p>
                     {sub.website && <p className="website"><a href={sub.website} target="_blank" rel="noopener noreferrer">Visit →</a></p>}
                     <div className="card-actions">
                       <button className="btn-sm btn-edit" onClick={() => handleEdit(sub)}>Edit</button>
@@ -212,7 +246,7 @@ function App() {
                     <div
                       className="bar-fill"
                       style={{
-                        width: `${(amount / analytics.totalMonthly) * 100}%`
+                        width: `${analytics.totalMonthly > 0 ? (amount / analytics.totalMonthly) * 100 : 0}%`
                       }}
                     ></div>
                   </div>
@@ -225,7 +259,7 @@ function App() {
       </main>
 
       {showModal && (
-        <div className="modal-overlay" onClick={() => setShowModal(false)}>
+        <div className="modal-overlay" onClick={closeModal}>
           <div className="modal" onClick={(e) => e.stopPropagation()}>
             <h2>{editingId ? 'Edit' : 'Add'} Subscription</h2>
             <form onSubmit={handleSubmit}>
@@ -306,8 +340,10 @@ function App() {
                 />
               </div>
 
+              {formError && <p className="error">{formError}</p>}
+
               <div className="form-actions">
-                <button type="button" className="btn-secondary" onClick={() => setShowModal(false)}>
+                <button type="button" className="btn-secondary" onClick={closeModal}>
                   Cancel
                 </button>
                 <button type="submit" className="btn-primary">
