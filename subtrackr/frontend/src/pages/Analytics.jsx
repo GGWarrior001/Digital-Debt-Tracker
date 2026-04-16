@@ -59,7 +59,7 @@ export function Analytics() {
           <span className="upcoming-label">Upcoming:</span>
           {analytics.upcomingBilling.slice(0, 3).map((b, i) => (
             <span key={b.id} className="upcoming-item">
-              {b.name} — ${b.cost.toFixed(2)} in {b.daysUntil === 0 ? 'today' : `${b.daysUntil}d`}
+              {b.name} — ${b.cost.toFixed(2)} {b.daysUntil === 0 ? 'today' : `in ${b.daysUntil}d`}
               {i < Math.min(analytics.upcomingBilling.length, 3) - 1 ? ' · ' : ''}
             </span>
           ))}
